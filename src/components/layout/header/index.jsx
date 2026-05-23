@@ -34,7 +34,7 @@ const ModifiedHeader = () => {
 
         {/* Currency Selector */}
         <div className="flex items-center gap-2 bg-gray-100 rounded-full p-1 pr-3">
-          <span className="text-xs text-slate-500 font-medium px-2">Currency</span>
+          <span className="text-xs text-slate-500 font-medium px-2">Tiền tệ</span>
           <Dropdown>
             <DropdownTrigger className="flex items-center gap-1 text-sm font-semibold text-slate-700 hover:text-slate-900 focus:outline-none">
               <div className="flex items-center px-2 rounded-lg py-0.5 gap-2 bg-gray-200">

@@ -84,7 +84,7 @@ const BackupRestore = () => {
           ) : (
             <DatabaseBackup className="w-3.5 h-3.5" />
           )}
-          Backup
+          Sao lưu
         </button>
 
         {/* Restore button */}
@@ -100,7 +100,7 @@ const BackupRestore = () => {
           ) : (
             <UploadCloud className="w-3.5 h-3.5" />
           )}
-          Restore
+          Khôi phục
         </button>
 
         <input

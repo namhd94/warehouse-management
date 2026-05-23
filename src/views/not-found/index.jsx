@@ -14,10 +14,10 @@ const NotFound = () => {
       </div>
       
       <h1 className="text-4xl font-bold text-gray-900 mb-2">404</h1>
-      <h2 className="text-xl font-semibold text-gray-700 mb-4">Page Not Found</h2>
+      <h2 className="text-xl font-semibold text-gray-700 mb-4">Không tìm thấy trang</h2>
       
       <p className="text-gray-500 max-w-md mb-8">
-        The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.
+        Trang bạn đang tìm kiếm có thể đã bị xóa, thay đổi tên hoặc tạm thời không khả dụng.
       </p>
 
       <Button 
@@ -25,7 +25,7 @@ const NotFound = () => {
         icon={Home}
         onClick={() => navigate(PATHs.HOME)}
       >
-        Back to Home
+        Quay lại Trang chủ
       </Button>
     </div>
   );

@@ -21,11 +21,11 @@ export const getMenuItems = () => [
     isOpen: true,
   },
   {
-    label: "Examples",
+    label: "Các ví dụ",
     icon: Layers,
     children: [
-      { label: "Components", path: PATHs.UI_COMPONENTS, icon: Layers },
-      { label: "Form", path: PATHs.UI_FORM, icon: FormInput },
+      { label: "Thành phần UI", path: PATHs.UI_COMPONENTS, icon: Layers },
+      { label: "Biểu mẫu", path: PATHs.UI_FORM, icon: FormInput },
     ],
     isOpen: false,
   }
