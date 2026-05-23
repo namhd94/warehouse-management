@@ -4,6 +4,7 @@ import cors from 'cors';
 import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -11,10 +12,18 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DB_PATH = path.join(__dirname, 'warehouse.db');
+
+// In production (Fly.io), DATA_DIR points to the mounted persistent volume (/data).
+// In development, data is stored in the project root.
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const DB_PATH = path.join(DATA_DIR, 'warehouse.db');
 
 app.use(cors());
 app.use(express.json());
+
+// Serve React build in production
+const DIST_PATH = path.join(__dirname, 'dist');
+app.use(express.static(DIST_PATH));
 
 // Helper to normalize strings for ID generation
 function slugify(text) {
@@ -558,6 +567,9 @@ app.post('/api/transactions/batch', async (req, res) => {
     const allMaterials = await db.all('SELECT id, code, LOWER(name) as norm_name FROM materials');
     const allDrivers = await db.all('SELECT id, code, plate, LOWER(name) as norm_name FROM drivers');
 
+    const batchTs = Date.now();  // Shared timestamp for this batch
+    let rowCounter = 0;          // Counter ensures unique IDs even in the same millisecond
+
     for (const t of transactions) {
       if (!t.date || !t.material_code_or_name) continue;
       
@@ -642,12 +654,15 @@ app.post('/api/transactions/batch', async (req, res) => {
         }
       }
 
-      const txId = `tx-imp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      // Use batchTs + rowCounter to guarantee uniqueness across the entire batch
+      const txId = `tx-imp-${batchTs}-${String(rowCounter).padStart(5, '0')}`;
+      rowCounter++;
       const odom = t.odometer ? parseFloat(t.odometer) : null;
       const notes = t.notes ? t.notes.toString().trim() : '';
 
       await stmt.run(txId, date, type, material_id, qty, driver_id, odom, notes);
     }
+
 
     await stmt.finalize();
     await db.run('COMMIT');
@@ -677,10 +692,22 @@ app.post('/api/transactions/batch', async (req, res) => {
 });
 
 
+// SPA fallback — serve React app for any non-API route (React Router handles it client-side)
+app.get('*', (req, res) => {
+  const indexPath = path.join(DIST_PATH, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    // Fallback for development when dist/ doesn't exist yet
+    res.status(404).json({ error: 'Frontend not built. Run: npm run build' });
+  }
+});
+
 // Start server
 initDb().then(() => {
   app.listen(PORT, () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
+    console.log(`Data directory: ${DATA_DIR}`);
   });
 }).catch(err => {
   console.error('Failed to initialize database:', err);

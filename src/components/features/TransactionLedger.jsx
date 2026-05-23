@@ -196,71 +196,63 @@ const TransactionLedger = () => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Excel header aliases
+    // importFromExcel maps Excel column headers → these targetKeys
     const columnMapping = {
-      date: ['ngày', 'date', 'ngày tháng', 'ngay'],
-      material_code_or_name: ['vật tư', 'tên vật tư', 'mã vt', 'mã vật tư', 'material', 'vat tu', 'tên vật tư tồn kho'],
-      driver_code_or_name: ['tài xế', 'mã tx', 'mã tài xế', 'driver', 'tai xe', 'tài xế/người nhận', 'người nhận'],
-      plate: ['xe', 'biển số', 'biển số xe', 'plate', 'bien so', 'phương tiện'],
-      odometer: ['số km', 'odometer', 'so km', 'km', 'số km lúc xuất'],
-      notes: ['ghi chú', 'notes', 'ghi chu', 'nội dung', 'noi dung'],
-      unit: ['đvt', 'đơn vị tính', 'dvt', 'unit', 'đơn vị']
+      date:                 ['ngày', 'date', 'ngày tháng', 'ngay'],
+      material_code_or_name:['vật tư', 'tên vật tư', 'mã vt', 'mã vật tư', 'material', 'vat tu', 'tên vật tư tồn kho'],
+      type:                 ['loại', 'loai', 'type', 'nhập/xuất', 'mục đích'],
+      quantity:             ['số lượng', 'quantity', 'sl', 'qty', 'số lượng (lít)', 'sl (lit)'],
+      nhap_qty:             ['nhập (lít)', 'nhập lít', 'nhap lit', 'nhập', 'nhap', 'nhập (cái)', 'nhập sl'],
+      xuat_qty:             ['xuất (lít)', 'xuất lít', 'xuat lit', 'xuất', 'xuat', 'xuất (cái)', 'xuất sl'],
+      driver_code_or_name:  ['tài xế', 'mã tx', 'mã tài xế', 'driver', 'tai xe', 'tài xế/người nhận', 'người nhận'],
+      plate:                ['xe', 'biển số', 'biển số xe', 'plate', 'bien so', 'phương tiện'],
+      odometer:             ['số km', 'odometer', 'so km', 'km', 'số km lúc xuất'],
+      notes:                ['ghi chú', 'notes', 'ghi chu', 'nội dung', 'noi dung'],
+      unit:                 ['đvt', 'đơn vị tính', 'dvt', 'unit', 'đơn vị'],
     };
 
     try {
+      // rawData rows already use the targetKeys above (not Vietnamese headers)
       const rawData = await importFromExcel(file, columnMapping);
       if (rawData.length === 0) {
         alert('Không tìm thấy dữ liệu hợp lệ trong file Excel.');
         return;
       }
 
-      // Check if file is Sheet 2 style (contains 'nhập (lít)' / 'xuất (lít)' rather than general quantity)
       const mappedData = rawData.map(row => {
-        const keys = Object.keys(row);
-        const getVal = (possibleHeaders) => {
-          const key = keys.find(k => possibleHeaders.includes(k.toLowerCase().trim()));
-          return key ? row[key] : null;
-        };
-
-        const dateVal = getVal(['ngày', 'date', 'ngày tháng', 'ngay']);
+        // --- Resolve date ---
         let date = '';
-        if (dateVal) {
-          if (typeof dateVal === 'number') {
-            const dateObj = new Date((dateVal - 25569) * 86400 * 1000);
-            date = dateObj.toISOString().substring(0, 10);
+        if (row.date) {
+          if (typeof row.date === 'number') {
+            // Excel serial date → JS Date
+            date = new Date((row.date - 25569) * 86400 * 1000).toISOString().substring(0, 10);
           } else {
-            date = dateVal.toString().substring(0, 10);
+            date = row.date.toString().substring(0, 10);
           }
         } else {
           date = new Date().toISOString().substring(0, 10);
         }
 
-        let material = getVal(['vật tư', 'tên vật tư', 'mã vt', 'mã vật tư', 'material', 'vat tu', 'tên vật tư tồn kho']);
-        const driver = getVal(['tài xế', 'mã tx', 'mã tài xế', 'driver', 'tai xe', 'tài xế/người nhận', 'người nhận']);
-        const plate = getVal(['xe', 'biển số', 'biển số xe', 'plate', 'bien so', 'phương tiện']);
-        const odometer = getVal(['số km', 'odometer', 'so km', 'km', 'số km lúc xuất']);
-        const notes = getVal(['ghi chú', 'notes', 'ghi chu', 'nội dung', 'noi dung']);
-        const unit = getVal(['đvt', 'đơn vị tính', 'dvt', 'unit', 'đơn vị']);
-
+        // --- Resolve type + quantity ---
+        // Support both split-column style (nhap_qty / xuat_qty) and single-column style (quantity + type)
         let type = 'XUAT';
         let quantity = 0;
 
-        const nhapVal = getVal(['nhập (lít)', 'nhập lít', 'nhap lit', 'nhập', 'nhap']);
-        const xuatVal = getVal(['xuất (lít)', 'xuất lít', 'xuat lit', 'xuất', 'xuat']);
-        const qtyVal = getVal(['số lượng', 'quantity', 'sl', 'qty']);
+        const nhapVal = row.nhap_qty !== undefined ? parseFloat(row.nhap_qty) : NaN;
+        const xuatVal = row.xuat_qty !== undefined ? parseFloat(row.xuat_qty) : NaN;
+        const qtyVal  = row.quantity  !== undefined ? parseFloat(row.quantity)  : NaN;
 
-        if (nhapVal !== null && nhapVal !== undefined && parseFloat(nhapVal) > 0) {
+        if (!isNaN(nhapVal) && nhapVal > 0) {
           type = 'NHAP';
-          quantity = parseFloat(nhapVal);
-          if (!material) material = 'Ure (Lít)';
-        } else if (xuatVal !== null && xuatVal !== undefined && parseFloat(xuatVal) > 0) {
+          quantity = nhapVal;
+        } else if (!isNaN(xuatVal) && xuatVal > 0) {
           type = 'XUAT';
-          quantity = parseFloat(xuatVal);
-          if (!material) material = 'Ure (Lít)';
-        } else if (qtyVal !== null && qtyVal !== undefined) {
-          quantity = parseFloat(qtyVal);
-          const purpose = getVal(['mục đích', 'loại', 'type', 'mục đích nhập/xuất', 'loai']);
-          if (purpose && (purpose.toLowerCase().includes('nhập') || purpose.toLowerCase().includes('nhap') || purpose.toLowerCase().includes('in'))) {
+          quantity = xuatVal;
+        } else if (!isNaN(qtyVal) && qtyVal > 0) {
+          quantity = qtyVal;
+          // Determine direction from the 'type' column if present
+          const typeStr = row.type ? row.type.toString().toLowerCase() : '';
+          if (typeStr.includes('nhập') || typeStr.includes('nhap') || typeStr === 'in') {
             type = 'NHAP';
           } else {
             type = 'XUAT';
@@ -270,18 +262,19 @@ const TransactionLedger = () => {
         return {
           date,
           type,
-          material_code_or_name: material || 'Vật tư khác',
+          material_code_or_name: row.material_code_or_name || null,
           quantity,
-          driver_code_or_name: driver,
-          plate,
-          odometer: odometer ? parseFloat(odometer) : null,
-          notes: notes || '',
-          unit: unit || 'Cái'
+          driver_code_or_name:   row.driver_code_or_name  || null,
+          plate:                 row.plate                || null,
+          odometer:              row.odometer ? parseFloat(row.odometer) : null,
+          notes:                 row.notes || '',
+          unit:                  row.unit  || 'Cái',
         };
+      // Filter out rows with no valid quantity or no material
       }).filter(row => row.quantity > 0 && row.material_code_or_name);
 
       if (mappedData.length === 0) {
-        alert('Không trích xuất được giao dịch hợp lệ. Vui lòng kiểm tra tiêu đề các cột.');
+        alert('Không trích xuất được giao dịch hợp lệ. Vui lòng kiểm tra:\n- Tên cột tiêu đề\n- Cột Số lượng (hoặc Nhập/Xuất) phải > 0\n- Cột Vật tư không được trống');
         return;
       }
 
@@ -292,6 +285,7 @@ const TransactionLedger = () => {
       e.target.value = null;
     }
   };
+
 
   // Open Edit Dialog
   const handleOpenEdit = (tx) => {

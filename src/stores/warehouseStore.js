@@ -57,10 +57,11 @@ export const useWarehouseStore = create((set, get) => ({
     try {
       const response = await apiClient.post('/api/drivers/batch', driversArray);
       set({ drivers: response.data.data });
-      toast.success(`Nhập thành công ${driversArray.length} tài xế!`);
+      toast.success(`Nhập thành công ${response.data.count || driversArray.length} tài xế!`);
       return true;
     } catch (error) {
       console.error('Error importing drivers:', error);
+      toast.error('Nhập tài xế thất bại: ' + (error.response?.data?.error || error.message));
       return false;
     }
   },
@@ -119,10 +120,11 @@ export const useWarehouseStore = create((set, get) => ({
     try {
       const response = await apiClient.post('/api/materials/batch', materialsArray);
       set({ materials: response.data.data });
-      toast.success(`Nhập thành công ${materialsArray.length} vật tư!`);
+      toast.success(`Nhập thành công ${response.data.count || materialsArray.length} vật tư!`);
       return true;
     } catch (error) {
       console.error('Error importing materials:', error);
+      toast.error('Nhập vật tư thất bại: ' + (error.response?.data?.error || error.message));
       return false;
     }
   },
@@ -189,10 +191,11 @@ export const useWarehouseStore = create((set, get) => ({
       set({ transactions: response.data.data });
       // Re-fetch materials to get updated stock levels
       await get().fetchMaterials();
-      toast.success(`Nhập thành công ${txsArray.length} nhật ký giao dịch!`);
+      toast.success(`Nhập thành công ${response.data.count || txsArray.length} giao dịch!`);
       return true;
     } catch (error) {
       console.error('Error importing transactions:', error);
+      toast.error('Nhập giao dịch thất bại: ' + (error.response?.data?.error || error.message));
       return false;
     }
   },

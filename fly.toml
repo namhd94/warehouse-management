@@ -1,0 +1,36 @@
+# fly.toml - Fly.io deployment configuration for Warehouse Management System
+# Generated for Phương án 2: Full-stack on Fly.io (Frontend + Backend + SQLite)
+
+app = "warehouse-management-app"
+primary_region = "sin"   # Singapore — closest free region for Vietnam
+
+[build]
+  # Use the Dockerfile in the project root
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+  DATA_DIR = "/data"   # Mount path for the persistent volume
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+# Persistent volume — stores warehouse.db across restarts
+# Created with: fly volumes create warehouse_data --size 1 --region sin
+[[mounts]]
+  source = "warehouse_data"
+  destination = "/data"

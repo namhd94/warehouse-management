@@ -57,13 +57,19 @@ export const importFromExcel = (file, columnMapping) => {
         // Map headers to key indexes
         const headerMap = {};
         Object.entries(columnMapping).forEach(([targetKey, possibleHeaders]) => {
-          const index = headers.findIndex(h => 
-            possibleHeaders.some(ph => h === ph.toLowerCase() || h.includes(ph.toLowerCase()))
+          const index = headers.findIndex(h =>
+            possibleHeaders.some(ph => {
+              const hNorm  = h.toLowerCase().trim();
+              const phNorm = ph.toLowerCase().trim();
+              // Exact match OR header contains pattern OR pattern contains header
+              return hNorm === phNorm || hNorm.includes(phNorm) || phNorm.includes(hNorm);
+            })
           );
           if (index !== -1) {
             headerMap[targetKey] = index;
           }
         });
+
 
         // Parse rows
         const result = dataRows.map((row) => {
