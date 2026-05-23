@@ -692,6 +692,109 @@ app.post('/api/transactions/batch', async (req, res) => {
 });
 
 
+// ─── BACKUP / RESTORE ────────────────────────────────────────────────────────
+
+// GET /api/backup — Full database export with exact IDs (safe for restore)
+app.get('/api/backup', async (req, res) => {
+  try {
+    const drivers      = await db.all('SELECT * FROM drivers ORDER BY code ASC');
+    const materials    = await db.all('SELECT * FROM materials ORDER BY code ASC');
+    const transactions = await db.all('SELECT * FROM transactions ORDER BY date ASC, id ASC');
+
+    const backup = {
+      version: 1,
+      exported_at: new Date().toISOString(),
+      counts: { drivers: drivers.length, materials: materials.length, transactions: transactions.length },
+      drivers,
+      materials,
+      transactions,
+    };
+
+    // Set headers so the browser triggers a file download
+    const filename = `warehouse_backup_${new Date().toISOString().substring(0, 10)}.json`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/json');
+    res.json(backup);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/restore — Full database restore from a backup JSON
+// Clears all data then re-inserts in correct dependency order:
+//   drivers → materials → transactions
+app.post('/api/restore', async (req, res) => {
+  const { version, drivers = [], materials = [], transactions = [] } = req.body;
+
+  if (version !== 1) {
+    return res.status(400).json({ error: 'Unsupported backup version. Only version 1 is supported.' });
+  }
+
+  try {
+    await db.run('BEGIN TRANSACTION');
+
+    // Clear all tables in reverse-dependency order to avoid FK issues
+    await db.run('DELETE FROM transactions');
+    await db.run('DELETE FROM materials');
+    await db.run('DELETE FROM drivers');
+
+    // 1. Restore drivers
+    for (const d of drivers) {
+      if (!d.id || !d.code) continue;
+      await db.run(
+        'INSERT INTO drivers (id, code, plate, name) VALUES (?, ?, ?, ?)',
+        [d.id, d.code.trim(), d.plate || null, d.name || null]
+      );
+    }
+
+    // 2. Restore materials
+    for (const m of materials) {
+      if (!m.id || !m.name) continue;
+      await db.run(
+        'INSERT INTO materials (id, code, name, unit, location, initial_quantity, check_month) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [
+          m.id,
+          m.code   || null,
+          m.name.trim(),
+          m.unit   || 'Cái',
+          m.location || 'Kho chung',
+          m.initial_quantity || 0,
+          m.check_month || new Date().toISOString().substring(0, 7),
+        ]
+      );
+    }
+
+    // 3. Restore transactions (IDs and foreign keys are preserved exactly)
+    for (const t of transactions) {
+      if (!t.id || !t.material_id || !t.date) continue;
+      await db.run(
+        'INSERT INTO transactions (id, date, type, material_id, quantity, driver_id, odometer, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          t.id,
+          t.date,
+          t.type === 'NHAP' ? 'NHAP' : 'XUAT',
+          t.material_id,
+          parseFloat(t.quantity) || 0,
+          t.driver_id || null,
+          t.odometer  ? parseFloat(t.odometer) : null,
+          t.notes || '',
+        ]
+      );
+    }
+
+    await db.run('COMMIT');
+
+    res.json({
+      message: 'Database restored successfully',
+      counts: { drivers: drivers.length, materials: materials.length, transactions: transactions.length },
+    });
+  } catch (error) {
+    await db.run('ROLLBACK');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 // SPA fallback — serve React app for any non-API route (React Router handles it client-side)
 app.get('*', (req, res) => {
   const indexPath = path.join(DIST_PATH, 'index.html');

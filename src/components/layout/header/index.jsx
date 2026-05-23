@@ -8,6 +8,7 @@ import {
 } from "@/components/dropdown-menu";
 import { useLocation } from 'react-router-dom';
 import { PAGE_TITLES } from "@/helpers/paths.js";
+import BackupRestore from "@/components/features/BackupRestore";
 
 const ModifiedHeader = () => {
   const location = useLocation();
@@ -24,7 +25,13 @@ const ModifiedHeader = () => {
       <h1 className="text-lg font-medium text-slate-800">{getPageTitle(location.pathname)}</h1>
 
       {/* Right Actions */}
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-4">
+        {/* Backup / Restore buttons */}
+        <BackupRestore />
+
+        {/* Separator */}
+        <div className="h-6 w-px bg-slate-200" />
+
         {/* Currency Selector */}
         <div className="flex items-center gap-2 bg-gray-100 rounded-full p-1 pr-3">
           <span className="text-xs text-slate-500 font-medium px-2">Currency</span>

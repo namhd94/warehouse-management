@@ -199,4 +199,56 @@ export const useWarehouseStore = create((set, get) => ({
       return false;
     }
   },
+
+  // ─── BACKUP / RESTORE ────────────────────────────────────────────────────────
+
+  backupData: async () => {
+    try {
+      // Fetch the backup JSON from the server
+      const response = await apiClient.get('/api/backup');
+      const backup = response.data;
+
+      // Trigger browser file download
+      const json   = JSON.stringify(backup, null, 2);
+      const blob   = new Blob([json], { type: 'application/json' });
+      const url    = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href     = url;
+      anchor.download = `warehouse_backup_${new Date().toISOString().substring(0, 10)}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+
+      toast.success(
+        `Backup thành công! ${backup.counts.drivers} tài xế · ${backup.counts.materials} vật tư · ${backup.counts.transactions} giao dịch`
+      );
+      return true;
+    } catch (error) {
+      console.error('Error backing up data:', error);
+      toast.error('Backup thất bại: ' + (error.response?.data?.error || error.message));
+      return false;
+    }
+  },
+
+  restoreData: async (backupJson) => {
+    try {
+      const response = await apiClient.post('/api/restore', backupJson);
+      const { counts } = response.data;
+
+      // Refresh all store state after restore
+      await get().fetchDrivers();
+      await get().fetchMaterials();
+      await get().fetchTransactions();
+
+      toast.success(
+        `Khôi phục thành công! ${counts.drivers} tài xế · ${counts.materials} vật tư · ${counts.transactions} giao dịch`
+      );
+      return true;
+    } catch (error) {
+      console.error('Error restoring data:', error);
+      toast.error('Khôi phục thất bại: ' + (error.response?.data?.error || error.message));
+      return false;
+    }
+  },
 }));
