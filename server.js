@@ -1,8 +1,7 @@
 /* global process */
 import express from 'express';
 import cors from 'cors';
-import { open } from 'sqlite';
-import sqlite3 from 'sqlite3';
+import { createClient } from '@libsql/client';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -13,8 +12,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// In production (Fly.io), DATA_DIR points to the mounted persistent volume (/data).
-// In development, data is stored in the project root.
+// In production, DATA_DIR points to the database directory if local.
 const DATA_DIR = process.env.DATA_DIR || __dirname;
 const DB_PATH = path.join(DATA_DIR, 'warehouse.db');
 
@@ -36,13 +34,124 @@ function slugify(text) {
     .replace(/[\s-]+/g, '-');
 }
 
+// PreparedStatement compatibility wrapper for libSQL
+class PreparedStatement {
+  constructor(wrapper, sql) {
+    this.wrapper = wrapper;
+    this.sql = sql;
+    this.paramsList = [];
+  }
+
+  async run(...params) {
+    const args = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
+    this.paramsList.push(args);
+  }
+
+  async finalize() {
+    if (this.paramsList.length === 0) return;
+    if (this.wrapper.activeTx) {
+      for (const args of this.paramsList) {
+        await this.wrapper.activeTx.execute({ sql: this.sql, args });
+      }
+    } else {
+      const batchQueries = this.paramsList.map(args => ({
+        sql: this.sql,
+        args
+      }));
+      await this.wrapper.client.batch(batchQueries, "write");
+    }
+    this.paramsList = [];
+  }
+}
+
+// LibSqlWrapper maps sqlite3 API (all, get, run, prepare, exec) to @libsql/client
+class LibSqlWrapper {
+  constructor(client) {
+    this.client = client;
+    this.activeTx = null;
+  }
+
+  get executor() {
+    return this.activeTx || this.client;
+  }
+
+  async exec(sql) {
+    const statements = sql
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    if (statements.length > 0) {
+      if (this.activeTx) {
+        for (const stmt of statements) {
+          await this.activeTx.execute(stmt);
+        }
+      } else {
+        await this.client.batch(statements, "write");
+      }
+    }
+  }
+
+  async run(sql, params) {
+    const sqlUpper = sql.trim().toUpperCase();
+    if (sqlUpper.startsWith('BEGIN')) {
+      this.activeTx = await this.client.transaction('write');
+      return { lastID: undefined, changes: 0 };
+    }
+    if (sqlUpper === 'COMMIT' || sqlUpper === 'END TRANSACTION') {
+      if (this.activeTx) {
+        await this.activeTx.commit();
+        this.activeTx = null;
+      }
+      return { lastID: undefined, changes: 0 };
+    }
+    if (sqlUpper === 'ROLLBACK' || sqlUpper === 'ROLLBACK TRANSACTION') {
+      if (this.activeTx) {
+        try {
+          await this.activeTx.rollback();
+        } catch (e) {
+          // Ignore rollback errors if transaction was aborted/closed
+        }
+        this.activeTx = null;
+      }
+      return { lastID: undefined, changes: 0 };
+    }
+
+    const result = await this.executor.execute({ sql, args: params || [] });
+    return {
+      lastID: result.lastInsertRowid !== undefined ? Number(result.lastInsertRowid) : undefined,
+      changes: result.rowsAffected
+    };
+  }
+
+  async all(sql, params) {
+    const result = await this.executor.execute({ sql, args: params || [] });
+    return result.rows;
+  }
+
+  async get(sql, params) {
+    const result = await this.executor.execute({ sql, args: params || [] });
+    return result.rows[0];
+  }
+
+  async prepare(sql) {
+    return new PreparedStatement(this, sql);
+  }
+}
+
 // Database Connection
 let db;
 async function initDb() {
-  db = await open({
-    filename: DB_PATH,
-    driver: sqlite3.Database
+  const url = process.env.TURSO_DATABASE_URL || `file:${DB_PATH}`;
+  const authToken = process.env.TURSO_AUTH_TOKEN;
+
+  console.log(`Connecting database: ${url.startsWith('libsql://') ? 'Turso Cloud' : 'Local SQLite (' + url + ')'}`);
+
+  const client = createClient({
+    url,
+    authToken
   });
+
+  db = new LibSqlWrapper(client);
 
   // Ensure tables exist in case the file doesn't exist
   await db.exec(`
